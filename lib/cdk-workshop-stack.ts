@@ -1,19 +1,39 @@
-import { Duration, Stack, StackProps } from 'aws-cdk-lib';
-import * as sns from 'aws-cdk-lib/aws-sns';
-import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
-import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { Stack, StackProps } from 'aws-cdk-lib';
+import { Code, Runtime, Function } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { LambdaRestApi } from 'aws-cdk-lib/aws-apigateway';
+import { HitCounter } from './hitcounter';
+import { TableViewer } from 'cdk-dynamo-table-viewer';
 
 export class CdkWorkshopStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const queue = new sqs.Queue(this, 'CdkWorkshopQueue', {
-      visibilityTimeout: Duration.seconds(300)
+    // defines an AWS Lambda resource
+    // scope: `this` : scope is usually the current construct -> 'this' is the current construct
+    // id: 'HelloHandler' : id is a unique identifier for the resource
+    // props: { runtime, code, handler } : props is an object that defines the resource's properties
+
+    const hello = new Function(this, "HelloHandler", {
+      runtime: Runtime.NODEJS_18_X,    // execution environment
+      code: Code.fromAsset("lambda"),  // code loaded from the "lambda" directory
+      handler: "hello.handler",        // file is "hello", function is "handler"
     });
 
-    const topic = new sns.Topic(this, 'CdkWorkshopTopic');
+    // counter
+    const helloWithCounter = new HitCounter(this, "HelloHitCounter", {
+      downstream: hello
+    });
 
-    topic.addSubscription(new subs.SqsSubscription(queue));
+    // defines an API Gateway REST API resource
+    const gateway = new LambdaRestApi(this, "Endpoint", {
+      handler: helloWithCounter.handler,
+    });
+
+    const tv = new TableViewer(this, 'ViewHitCounter', {
+      title: "Hello Hits",
+      table: helloWithCounter.table,
+      sortBy: "-hits"
+    });
   }
 }
